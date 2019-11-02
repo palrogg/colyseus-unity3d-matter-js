@@ -7,6 +7,20 @@ import { DemoRoom } from "./DemoRoom";
 
 import socialRoutes from "@colyseus/social/express";
 
+/* begin physics tests */
+
+// uncomment to test the PhysicsWorld class
+
+/*import { PhysicsWorld } from "./PhysicsWorld";
+
+const World = new PhysicsWorld;
+World.simulateAddObjects();
+World.simulateUpdate();
+World.getCollisions();*/
+
+/* end physics test */
+
+
 const PORT = Number(process.env.PORT || 2567);
 
 const app = express();
