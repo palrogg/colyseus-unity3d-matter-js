@@ -1,6 +1,18 @@
+/*
+
+  forked from colyseus-unity3d example room
+  https://github.com/colyseus/colyseus-unity3d/blob/master/Server/DemoRoom.ts
+
+  edited to add physics with matter-js
+
+*/
+
 import { Room, Client, generateId } from "colyseus";
 import { Schema, type, MapSchema, ArraySchema } from "@colyseus/schema";
 import { verifyToken, User, IUser } from "@colyseus/social";
+
+// custom class for physics with matter-js
+import { PhysicsWorld } from "./PhysicsWorld";
 
 class Entity extends Schema {
   @type("number")
@@ -29,9 +41,13 @@ class State extends Schema {
 }
 
 export class DemoRoom extends Room {
+  world: PhysicsWorld;
 
-  onCreate (options: any) {
+  onInit (options: any) {
     console.log("DemoRoom created!", options);
+
+    this.world = new PhysicsWorld;
+    console.log('world created from room')
 
     this.setState(new State());
     this.populateEnemies();
@@ -40,19 +56,29 @@ export class DemoRoom extends Room {
     this.setSimulationInterval((dt) => this.update(dt));
   }
 
-  async onAuth (client, options) {
-    console.log("onAuth(), options!", options);
+  async onAuth (options) {
     return await User.findById(verifyToken(options.token)._id);
   }
 
   populateEnemies () {
-    for (let i=0; i<=3; i++) {
+    // for (let i=0; i<=0; i++) {
+    // 1v1 -> 1 enemy
       const enemy = new Enemy();
-      enemy.x = Math.random() * 2;
-      enemy.y = Math.random() * 2;
+      enemy.x = Math.random() * 20;
+      enemy.y = Math.random() * 20;
       this.state.entities[generateId()] = enemy;
+
+      console.log('this.world = ' + this.world);
+      this.world.simulateAddObjects();
+      // this.world.addPlayer({x: enemy.x, y: enemy.y});
+      // console.log('Adding enemy at ' + enemy.x + ';' + enemy.y)
       this.state.arrayOfNumbers.push(Math.random());
-    }
+    // }
+  }
+
+  requestJoin (options: any) {
+    console.log("request join!", options);
+    return true;
   }
 
   onJoin (client: Client, options: any, user: IUser) {
@@ -82,11 +108,13 @@ export class DemoRoom extends Room {
     console.log(data, "received from", client.sessionId);
 
     if (data === "move_right") {
-      this.state.entities[client.sessionId].x += 0.01;
+      this.state.entities[client.sessionId].x += 0.1;
+    }else if (data === "move_left") {
+      this.state.entities[client.sessionId].x -= 0.1;
     }
     console.log(this.state.entities[client.sessionId].x);
 
-    this.broadcast({ hello: "hello world" });
+    // this.broadcast({ hello: "hello world" });
   }
 
   update (dt?: number) {
