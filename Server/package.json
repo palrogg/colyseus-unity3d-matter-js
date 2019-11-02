@@ -18,6 +18,7 @@
     "cors": "^2.8.5",
     "express": "^4.13.3",
     "express-jwt": "^5.3.1",
+    "matter-js": "^0.14.2",
     "typescript": "^3.3.4000"
   },
   "devDependencies": {
