@@ -48,6 +48,7 @@ export class DemoRoom extends Room {
 
     this.world = new PhysicsWorld;
     console.log('world created from room')
+    this.world.addWalls("desert");
 
     this.setState(new State());
     this.populateEnemies();
@@ -69,8 +70,7 @@ export class DemoRoom extends Room {
       this.state.entities[generateId()] = enemy;
 
       console.log('this.world = ' + this.world);
-      this.world.simulateAddObjects();
-      // this.world.addPlayer({x: enemy.x, y: enemy.y});
+      // this.world.simulateUpdate();
       // console.log('Adding enemy at ' + enemy.x + ';' + enemy.y)
       this.state.arrayOfNumbers.push(Math.random());
     // }
@@ -83,7 +83,14 @@ export class DemoRoom extends Room {
 
   onJoin (client: Client, options: any, user: IUser) {
     console.log("client joined!", client.sessionId);
+    // let newPlayer = new Player();
+    // newPlayer.x = 10.0;
+    // newPlayer.y = 10.0;
+    // console.log(newPlayer);
     this.state.entities[client.sessionId] = new Player();
+    this.world.addPlayer({x: 10, y: 10, id: client.sessionId});
+
+    console.log(this.state.entities[client.sessionId]);
   }
 
   async onLeave (client: Client, consented: boolean) {
@@ -108,16 +115,39 @@ export class DemoRoom extends Room {
     console.log(data, "received from", client.sessionId);
 
     if (data === "move_right") {
+      // if(!this.state.entities[client.sessionId].y){
+      //   this.state.entities[client.sessionId].y += 0.1;
+      //   console.log('.y created')
+      // }
+      // if(!this.state.entities[client.sessionId].x){
+      //   this.state.entities[client.sessionId].x += 0.1;
+      // }
+      this.world.movePlayer(client.sessionId);
       this.state.entities[client.sessionId].x += 0.1;
     }else if (data === "move_left") {
       this.state.entities[client.sessionId].x -= 0.1;
     }
-    console.log(this.state.entities[client.sessionId].x);
+    console.log('x position: ' + this.state.entities[client.sessionId].x);
 
     // this.broadcast({ hello: "hello world" });
   }
 
   update (dt?: number) {
+    // update state according to PhysicsWorld
+    let updated = this.world.getUpdate(dt);
+    if(updated){
+      // process.stdout.write('✓');
+      console.log(updated.position);
+      if(updated.id){
+        // this.state.entities[updated.id].x += 0.01;
+        this.state.entities[updated.id].x = updated.position.x;
+        this.state.entities[updated.id].y = updated.position.y / 100;
+      }
+    }else{
+      process.stdout.write('✗');
+    }
+    // this.state.entities[0].x = updatedPosition.x;
+    // this.state.entities[0].y = updatedPosition.y;
     // console.log("num clients:", Object.keys(this.clients).length);
   }
 
