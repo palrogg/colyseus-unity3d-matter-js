@@ -83,12 +83,14 @@ export class DemoRoom extends Room {
 
   onJoin (client: Client, options: any, user: IUser) {
     console.log("client joined!", client.sessionId);
-    // let newPlayer = new Player();
-    // newPlayer.x = 10.0;
-    // newPlayer.y = 10.0;
+    /*let newPlayer = new Player();
+    newPlayer.x = 10.0;
+    newPlayer.y = 10.0;*/
     // console.log(newPlayer);
     this.state.entities[client.sessionId] = new Player();
-    this.world.addPlayer({x: 10, y: 10, id: client.sessionId});
+    this.state.entities[client.sessionId].x = 0;
+    this.state.entities[client.sessionId].y = 0;
+    this.world.addPlayer({x: 0, y: 0, id: client.sessionId});
 
     console.log(this.state.entities[client.sessionId]);
   }
@@ -115,15 +117,19 @@ export class DemoRoom extends Room {
     console.log(data, "received from", client.sessionId);
 
     if (data === "move_right") {
-      // if(!this.state.entities[client.sessionId].y){
-      //   this.state.entities[client.sessionId].y += 0.1;
-      //   console.log('.y created')
-      // }
-      // if(!this.state.entities[client.sessionId].x){
-      //   this.state.entities[client.sessionId].x += 0.1;
-      // }
+      // this.state.entities[client.sessionId].x += 0.1;
+      if(!this.state.entities[client.sessionId].y){
+        this.state.entities[client.sessionId].y += 0.1;
+        console.log('.y created')
+      }
+      if(!this.state.entities[client.sessionId].x){
+        this.state.entities[client.sessionId].x += 0.1;
+        console.log('.x created')
+      }
+      this.world.resetPlayer(client.sessionId);
       this.world.movePlayer(client.sessionId);
-      this.state.entities[client.sessionId].x += 0.1;
+
+
     }else if (data === "move_left") {
       this.state.entities[client.sessionId].x -= 0.1;
     }
@@ -137,11 +143,15 @@ export class DemoRoom extends Room {
     let updated = this.world.getUpdate(dt);
     if(updated){
       // process.stdout.write('✓');
-      console.log(updated.position);
+      // console.log(updated.position);
       if(updated.id){
+        process.stdout.write('✓');
         // this.state.entities[updated.id].x += 0.01;
-        this.state.entities[updated.id].x = updated.position.x;
-        this.state.entities[updated.id].y = updated.position.y / 100;
+        // process.stdout.write('>' + updated.position.x + typeof(updated.position.x));
+        this.state.entities[updated.id].x = Math.round(updated.position.x);
+        this.state.entities[updated.id].y = Math.round(updated.position.y);
+      }else{
+        process.stdout.write('✗x');
       }
     }else{
       process.stdout.write('✗');
