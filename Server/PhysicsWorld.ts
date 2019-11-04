@@ -6,27 +6,40 @@ export class PhysicsWorld {
 
   constructor() {
     this.engine = Engine.create();
+    // very slow motion
+    this.engine.timing.timeScale = 0.1;
+    // World.bounds = { min: { x: -Infinity, y: -Infinity }, max: { x: Infinity, y: Infinity } }
     console.log('Physics: engine created');
   }
 
   addWalls(scene){
     console.log('Physics: creating scene “' + scene + '”');
-    let ground = Bodies.rectangle(200, -20, 810, 60, { isStatic: true });
-    let ground2 = Bodies.rectangle(200, -400, 2000, 600, { isStatic: true });
-    World.add(this.engine.world, [ground, ground2]);
+    var size = {width: 900, height: 600};
+
+    var wallLeft = Bodies.rectangle(4, size.height/2, 10, size.height, {isStatic: true})
+    var wallRight = Bodies.rectangle(size.width-4, size.height/2, 10, size.height, {isStatic: true})
+    var wallTop = Bodies.rectangle(size.width/2, 4, size.width, 10, {isStatic: true})
+    var wallBottom = Bodies.rectangle(size.width/2, size.height-4, size.width, 10, {isStatic: true})
+
+    World.add(this.engine.world, [wallLeft, wallRight, wallTop, wallBottom]);
+
   }
 
   addPlayer(player) {
-    var playerBox = Bodies.rectangle(0, 200, player.x, player.y);
+    var playerBox = Bodies.rectangle(0, 0, 60, 60); // Bodies.rectangle(0, 200, player.x, player.y);
     playerBox.id = player.id;
     this.player1body = playerBox;
     World.add(this.engine.world, [playerBox]);
     console.log(`Physics: player body added (${player.x}, ${player.y}, ${player.id})`);
   }
 
+  resetPlayer(playerId) {
+    Body.setPosition(this.player1body, {x: 0, y: 1});
+  }
+
   movePlayer(playerId) {
-    Body.applyForce( this.player1body, {x: this.player1body.position.x, y: this.player1body.position.y}, {x: 0, y: -0.05});
-    console.log('Physics: force sent');
+    Body.applyForce( this.player1body, {x: this.player1body.position.x, y: this.player1body.position.y}, {x: 0.01, y: 0});
+    console.log(`Physics: force sent, current position = (${this.player1body.position.x}, ${this.player1body.position.y})`);
   }
 
   // Fake objects to debug without room
