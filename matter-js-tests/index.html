@@ -1,0 +1,56 @@
+<html>
+<body>
+<script src="lib/matter.js"></script>
+<script>
+// TypeScript: import { Engine, World, Body, Bodies, Constraint } from 'matter-js';
+var Engine = Matter.Engine,
+    Render = Matter.Render,
+    World = Matter.World,
+    Bodies = Matter.Bodies,
+    Body = Matter.Body;
+
+var engine = Engine.create();
+
+// Sur le serveur: on gardera pas de renderer
+var render = Render.create({
+    element: document.body,
+    engine: engine,
+    options: {
+      width: 900,
+      height: 500,
+      wireframes: false
+    }
+});
+
+var test = Bodies.rectangle(0, 0, 20, 20, {isStatic: true});
+
+// on importera ces tailles dans PhysicsWorld.ts
+var size = {width: 900, height: 500};
+var wallRender = {fillstyle: 'purple', strokeStyle: 'red', lineWidth: 1};
+
+var wallLeft = Bodies.rectangle(4, size.height/2, 2, size.height, {isStatic: true, render: wallRender})
+var wallRight = Bodies.rectangle(size.width-4, size.height/2, 2, size.height, {isStatic: true, render: wallRender})
+var wallTop = Bodies.rectangle(size.width/2, 4, size.width, 2, {isStatic: true, render: wallRender})
+var wallBottom = Bodies.rectangle(size.width/2, size.height-4, size.width, 2, {isStatic: true, render: wallRender})
+
+var boxA = Bodies.rectangle(520, 300, 100, 100);
+var boxB = Bodies.rectangle(450, 50, 50, 50);
+var ground = Bodies.rectangle(400, 610, 810, 60, { isStatic: true });
+
+function boostUp(){
+  Body.applyForce( boxA, {x: boxA.position.x, y: boxA.position.y}, {x: 0, y: -0.2})
+}
+function boostRight(){
+  Body.applyForce( boxA, {x: boxA.position.x, y: boxA.position.y}, {x: 0.2, y: 0})
+}
+
+World.add(engine.world, [wallLeft, wallRight, wallTop, wallBottom, boxA, boxB]);
+
+Engine.run(engine);
+Render.run(render);
+</script>
+<button onclick="boostUp()">Up</button>
+<button onclick="boostRight()">Right</button>
+
+</body>
+</html>
