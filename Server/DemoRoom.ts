@@ -126,7 +126,7 @@ export class DemoRoom extends Room {
         this.state.entities[client.sessionId].x += 0.1;
         console.log('.x created')
       }
-      this.world.resetPlayer(client.sessionId);
+      // this.world.resetPlayer(client.sessionId);
       this.world.movePlayer(client.sessionId);
 
 
@@ -142,23 +142,16 @@ export class DemoRoom extends Room {
     // update state according to PhysicsWorld
     let updated = this.world.getUpdate(dt);
     if(updated){
-      // process.stdout.write('✓');
-      // console.log(updated.position);
       if(updated.id){
         process.stdout.write('✓');
-        // this.state.entities[updated.id].x += 0.01;
-        // process.stdout.write('>' + updated.position.x + typeof(updated.position.x));
         this.state.entities[updated.id].x = Math.round(updated.position.x);
-        this.state.entities[updated.id].y = Math.round(updated.position.y);
+        this.state.entities[updated.id].y = -1*Math.round(updated.position.y);
       }else{
         process.stdout.write('✗x');
       }
     }else{
       process.stdout.write('✗');
     }
-    // this.state.entities[0].x = updatedPosition.x;
-    // this.state.entities[0].y = updatedPosition.y;
-    // console.log("num clients:", Object.keys(this.clients).length);
   }
 
   onDispose () {
