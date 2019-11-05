@@ -1,14 +1,11 @@
-﻿using System;
+using System;
 using System.IO;
-using System.Threading.Tasks;
+using System.Collections;
+using System.Collections.Generic;
 using GameDevWare.Serialization;
 
 namespace Colyseus
 {
-	public delegate void ColyseusOpenEventHandler();
-	public delegate void ColyseusCloseEventHandler(NativeWebSocket.WebSocketCloseCode code);
-	public delegate void ColyseusErrorEventHandler(string message);
-
 	public class RoomAvailable
 	{
 		public string roomId { get; set; }
@@ -17,22 +14,39 @@ namespace Colyseus
 		public object metadata { get; set; }
 	}
 
-	public interface IRoom
+	public interface IRoom 
 	{
-		event ColyseusCloseEventHandler OnLeave;
+		string Id { get; set; }
+		Dictionary<string, object> Options { get; set; }
 
-		Task Connect();
-		Task Leave(bool consented);
+		void Recv();
+		void SetConnection(Connection connection);
+
+		event EventHandler OnLeave;
 	}
 
+	/// <summary>
+	/// </summary>
+
+	// public class Room<T> : IRoom
 	public class Room<T> : IRoom
 	{
-		public delegate void RoomOnMessageEventHandler(object message);
-		public delegate void RoomOnStateChangeEventHandler(T state, bool isFirstState);
+		protected string id;
+		public string Id
+		{
+			get { return id;  }
+			set { id = value; }
+		}
 
-		public string Id;
 		public string Name;
 		public string SessionId;
+
+		protected Dictionary<string, object> options;
+		public Dictionary<string, object> Options
+		{
+			get { return options;  }
+			set { options = value; }
+		}
 
 		public Connection Connection;
 
@@ -42,29 +56,35 @@ namespace Colyseus
 		protected byte previousCode = 0;
 
 		/// <summary>
+		/// Occurs when <see cref="Room"/> is able to connect to the server.
+		/// </summary>
+		public event EventHandler OnReadyToConnect;
+
+		/// <summary>
 		/// Occurs when the <see cref="Client"/> successfully connects to the <see cref="Room"/>.
 		/// </summary>
-		public event ColyseusOpenEventHandler OnJoin;
+		public event EventHandler OnJoin;
 
 		/// <summary>
 		/// Occurs when some error has been triggered in the room.
 		/// </summary>
-		public event ColyseusErrorEventHandler OnError;
+		public event EventHandler<ErrorEventArgs> OnError;
 
 		/// <summary>
 		/// Occurs when <see cref="Client"/> leaves this room.
 		/// </summary>
-		public event ColyseusCloseEventHandler OnLeave;
+		public event EventHandler OnLeave;
 
 		/// <summary>
 		/// Occurs when server sends a message to this <see cref="Room"/>
 		/// </summary>
-		public event RoomOnMessageEventHandler OnMessage;
+		public event EventHandler<MessageEventArgs> OnMessage;
 
 		/// <summary>
 		/// Occurs after applying the patched state on this <see cref="Room"/>.
 		/// </summary>
-		public event RoomOnStateChangeEventHandler OnStateChange;
+		//public event EventHandler<StateChangeEventArgs<T>> OnStateChange;
+		public event EventHandler<StateChangeEventArgs<T>> OnStateChange;
 
 		/// <summary>
 		/// Initializes a new instance of the <see cref="Room"/> class.
@@ -74,29 +94,53 @@ namespace Colyseus
 		/// The <see cref="Client"/> client connection instance.
 		/// </param>
 		/// <param name="name">The name of the room</param>
-		public Room (string name)
+		public Room (string name, Dictionary<string, object> options = null)
 		{
 			Name = name;
+			Options = options;
 		}
 
-		public async Task Connect()
+		public void Recv ()
+        {
+            byte[] data = Connection.Recv();
+            while (data != null)
+            {
+                ParseMessage(data);
+                data = Connection.Recv();
+            }
+        }
+
+		public IEnumerator Connect()
 		{
-			await Connection.Connect();
+			return Connection.Connect();
 		}
 
 		public void SetConnection (Connection connection)
 		{
 			Connection = connection;
 
-			Connection.OnClose += (code) => OnLeave?.Invoke(code);
-			Connection.OnError += (message) => OnError?.Invoke(message);
-			Connection.OnMessage += (bytes) => ParseMessage(bytes);
+			Connection.OnClose += (object sender, EventArgs e) => {
+				if (OnLeave != null) {
+					OnLeave.Invoke (this, e);
+				}
+			};
+
+			Connection.OnError += (object sender, ErrorEventArgs e) => {
+				if (OnError != null) {
+					OnError.Invoke(this, e);
+				}
+			};
+
+			OnReadyToConnect.Invoke (this, new EventArgs());
 		}
 
 		public void SetState(byte[] encodedState)
 		{
 			serializer.SetState(encodedState);
-			OnStateChange?.Invoke (serializer.GetState(), true);
+
+			if (OnStateChange != null) {
+				OnStateChange.Invoke (this, new StateChangeEventArgs<T>(serializer.GetState(), true));
+			}
 		}
 
 		public T State
@@ -107,20 +151,20 @@ namespace Colyseus
 		/// <summary>
 		/// Leave the room.
 		/// </summary>
-		public async Task Leave (bool consented = true)
+		public void Leave (bool consented = true)
 		{
 			if (Id != null) {
 				if (consented)
 				{
-					await Connection.Send(new object[] { Protocol.LEAVE_ROOM }); 
+					Connection.Send(new object[] { Protocol.LEAVE_ROOM }); 
 				}
 				else
 				{
-					await Connection.Close();
+					Connection.Close();
 				}
 
 			} else if (OnLeave != null) {
-				OnLeave?.Invoke (NativeWebSocket.WebSocketCloseCode.Normal);
+				OnLeave.Invoke (this, new EventArgs ());
 			}
 		}
 
@@ -128,9 +172,9 @@ namespace Colyseus
 		/// Send data to this room.
 		/// </summary>
 		/// <param name="data">Data to be sent</param>
-		public async Task Send (object data)
+		public void Send (object data)
 		{
-			await Connection.Send(new object[]{Protocol.ROOM_DATA, data});
+			Connection.Send(new object[]{Protocol.ROOM_DATA, Id, data});
 		}
 
 		public Listener<Action<PatchObject>> Listen(Action<PatchObject> callback)
@@ -151,7 +195,7 @@ namespace Colyseus
 			return ((FossilDeltaSerializer)serializer).State.Listen(segments, callback, immediate);
 		}
 
-		protected async void ParseMessage (byte[] bytes)
+		protected void ParseMessage (byte[] bytes)
 		{
 			if (previousCode == 0)
 			{
@@ -160,6 +204,9 @@ namespace Colyseus
 				if (code == Protocol.JOIN_ROOM)
 				{
 					var offset = 1;
+
+					SessionId = System.Text.Encoding.UTF8.GetString(bytes, offset+1, bytes[offset]);
+					offset += SessionId.Length + 1;
 
 					SerializerId = System.Text.Encoding.UTF8.GetString(bytes, offset+1, bytes[offset]);
 					offset += SerializerId.Length + 1;
@@ -181,17 +228,21 @@ namespace Colyseus
 						serializer.Handshake(bytes, offset);
 					}
 
-					OnJoin?.Invoke();
+					if (OnJoin != null)
+					{
+						OnJoin.Invoke(this, new EventArgs());
+					}
+
 				}
 				else if (code == Protocol.JOIN_ERROR)
 				{
 					var message = System.Text.Encoding.UTF8.GetString(bytes, 2, bytes[1]);
-					OnError?.Invoke(message);
+					OnError.Invoke(this, new ErrorEventArgs(message));
 
 				}
 				else if (code == Protocol.LEAVE_ROOM)
 				{
-					await Leave();
+					Leave();
 
 				}
 				else 
@@ -212,7 +263,7 @@ namespace Colyseus
 				else if (previousCode == Protocol.ROOM_DATA)
 				{
 					var message = MsgPack.Deserialize<object>(new MemoryStream(bytes));
-					OnMessage?.Invoke(message);
+					OnMessage.Invoke(this, new MessageEventArgs(message));
 
 				}
 				previousCode = 0;
@@ -222,7 +273,9 @@ namespace Colyseus
 		protected void Patch (byte[] delta)
 		{
 			serializer.Patch(delta);
-			OnStateChange?.Invoke(serializer.GetState(), false);
+
+			if (OnStateChange != null)
+				OnStateChange.Invoke(this, new StateChangeEventArgs<T>(serializer.GetState()));
 		}
 	}
 }

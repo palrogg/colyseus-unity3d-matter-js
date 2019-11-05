@@ -1,3 +1,11 @@
+/***
+ * THIS FILE IS HERE FOR HISTORICAL REASONS ONLY.
+ * 
+ * IT'S HIGHLY RECOMMENDED THAT YOU MIGRATE TO THE NEW WAY TO HANDLE STATE CHANGES
+ * 
+ * SEE `ColyseusClientSchema.cs` FILE
+ */
+
 using UnityEngine;
 using UnityEngine.UI;
 
@@ -5,29 +13,26 @@ using System.Collections;
 using System.Collections.Generic;
 using System;
 using Colyseus;
-using Colyseus.Schema;
 
 using GameDevWare.Serialization;
 
-public class ColyseusClient : MonoBehaviour {
+public class ColyseusClientFossilDelta : MonoBehaviour {
 
 	// UI Buttons are attached through Unity Inspector
-	public Button m_ConnectButton, m_JoinButton, m_ReJoinButton, m_SendMessageButton, m_LeaveButton, m_GetAvailableRoomsButton;
+	public Button m_ConnectButton, m_JoinButton, m_ReJoinButton, m_SendMessageButton, m_LeaveButton;
 	public InputField m_EndpointField;
 	public Text m_IdText, m_SessionIdText;
 
 	public string roomName = "demo";
 
 	protected Client client;
-	protected Room<State> room;
+	protected Room<IndexedDictionary<string, object>> room;
 
-	protected IndexedDictionary<Entity, GameObject> entities = new IndexedDictionary<Entity, GameObject>();
+	// map of players
+	protected Dictionary<string, GameObject> players = new Dictionary<string, GameObject>();
 
 	// Use this for initialization
 	IEnumerator Start () {
-		PlayerPrefs.DeleteAll();
-
-		Debug.Log(SystemInfo.deviceUniqueIdentifier);
 		/* Demo UI */
 		m_ConnectButton.onClick.AddListener(ConnectToServer);
 
@@ -35,7 +40,6 @@ public class ColyseusClient : MonoBehaviour {
 		m_ReJoinButton.onClick.AddListener(ReJoinRoom);
 		m_SendMessageButton.onClick.AddListener(SendMessage);
 		m_LeaveButton.onClick.AddListener(LeaveRoom);
-		m_GetAvailableRoomsButton.onClick.AddListener(GetAvailableRooms);
 
 		/* Always call Recv if Colyseus connection is open */
 		while (true)
@@ -48,7 +52,7 @@ public class ColyseusClient : MonoBehaviour {
 		}
 	}
 
-	async void ConnectToServer ()
+	void ConnectToServer ()
 	{
 		/*
 		 * Get Colyseus endpoint from InputField
@@ -61,14 +65,6 @@ public class ColyseusClient : MonoBehaviour {
 		 * Connect into Colyeus Server
 		 */
 		client = new Client(endpoint);
-
-		await client.Auth.Login();
-		//var friends = await client.Auth.GetFriends();
-
-		// Update username
-		client.Auth.Username = "Jake";
-		await client.Auth.Save();
-
 		client.OnOpen += (object sender, EventArgs e) => {
 			/* Update Demo UI */
 			m_IdText.text = "id: " + client.Id;
@@ -80,7 +76,7 @@ public class ColyseusClient : MonoBehaviour {
 
 	void JoinRoom ()
 	{
-		room = client.Join<State>(roomName, new Dictionary<string, object>()
+		room = client.Join(roomName, new Dictionary<string, object>()
 		{
 			{ "create", true }
 		});
@@ -97,9 +93,10 @@ public class ColyseusClient : MonoBehaviour {
 			Debug.Log("Joined room successfully.");
 			m_SessionIdText.text = "sessionId: " + room.SessionId;
 
-			room.State.entities.OnAdd += OnEntityAdd;
-			room.State.entities.OnRemove += OnEntityRemove;
-			room.State.entities.OnChange += OnEntityMove;
+			room.Listen("players/:id", OnPlayerChange, true);
+			room.Listen("players/:id/:axis", OnPlayerMove);
+			room.Listen("messages/:number", OnMessageAdded);
+			room.Listen(OnChangeFallback);
 
 			PlayerPrefs.SetString("sessionId", room.SessionId);
 			PlayerPrefs.Save();
@@ -118,7 +115,7 @@ public class ColyseusClient : MonoBehaviour {
 			return;
 		}
 
-		room = client.ReJoin<State>(roomName, sessionId);
+		room = client.ReJoin(roomName, sessionId);
 
 		room.OnReadyToConnect += (sender, e) => {
 			Debug.Log("Ready to connect to room!");
@@ -129,9 +126,11 @@ public class ColyseusClient : MonoBehaviour {
 			Debug.Log("Joined room successfully.");
 			m_SessionIdText.text = "sessionId: " + room.SessionId;
 
-			room.State.entities.OnAdd += OnEntityAdd;
-			room.State.entities.OnRemove += OnEntityRemove;
-			room.State.entities.OnChange += OnEntityMove;
+			// only register listeners after OnJoin.
+			room.Listen("players/:id", OnPlayerChange, true);
+			room.Listen("players/:id/:axis", OnPlayerMove);
+			room.Listen("messages/:number", OnMessageAdded);
+			room.Listen(OnChangeFallback);
 		};
 
 		room.OnStateChange += OnStateChangeHandler;
@@ -143,27 +142,12 @@ public class ColyseusClient : MonoBehaviour {
 		room.Leave(false);
 
 		// Destroy player entities
-		foreach (KeyValuePair<Entity, GameObject> entry in entities)
+		foreach (KeyValuePair<string, GameObject> entry in players)
 		{
 			Destroy(entry.Value);
 		}
 
-		entities.Clear();
-	}
-
-	void GetAvailableRooms()
-	{
-		client.GetAvailableRooms(roomName, (RoomAvailable[] roomsAvailable) =>
-		{
-			Debug.Log("Available rooms (" + roomsAvailable.Length + ")");
-			for (var i=0; i< roomsAvailable.Length;i++)
-			{
-				Debug.Log("roomId: " + roomsAvailable[i].roomId);
-				Debug.Log("maxClients: " + roomsAvailable[i].maxClients);
-				Debug.Log("clients: " + roomsAvailable[i].clients);
-				Debug.Log("metadata: " + roomsAvailable[i].metadata);
-			}
-		});
+		players.Clear();
 	}
 
 	void SendMessage()
@@ -181,47 +165,74 @@ public class ColyseusClient : MonoBehaviour {
 	void OnMessage (object sender, MessageEventArgs e)
 	{
 		var message = (IndexedDictionary<string, object>) e.Message;
-		Debug.Log("Message:");
 		Debug.Log(message);
 	}
 
-	void OnStateChangeHandler (object sender, StateChangeEventArgs<State> e)
+	void OnStateChangeHandler (object sender, StateChangeEventArgs<IndexedDictionary<string, object>> e)
 	{
 		// Setup room first state
 		Debug.Log("State has been updated!");
 	}
 
-	void OnEntityAdd(object sender, KeyValueEventArgs<Entity, string> item)
+	void OnPlayerChange (DataChange change)
 	{
-		GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+		Debug.Log ("OnPlayerChange");
+		Debug.Log (change.operation);
+		Debug.Log (change.path["id"]);
+//		Debug.Log (change.value);
 
-		Debug.Log("Player add! x => " + item.Value.x + ", y => " + item.Value.y);
+		if (change.operation == "add") {
+			IndexedDictionary<string, object> value = (IndexedDictionary<string, object>) change.value;
 
-		cube.transform.position = new Vector3(item.Value.x, item.Value.y, 0);
+			GameObject cube = GameObject.CreatePrimitive (PrimitiveType.Cube);
 
-		// add "player" to map of players
-		entities.Add(item.Value, cube);
+			cube.transform.position = new Vector3 (Convert.ToSingle(value ["x"]), Convert.ToSingle(value ["y"]), 0);
+
+			// add "player" to map of players by id.
+			players.Add (change.path ["id"], cube);
+
+		} else if (change.operation == "remove") {
+			// remove player from scene
+			GameObject cube;
+			players.TryGetValue (change.path ["id"], out cube);
+			Destroy (cube);
+
+			players.Remove (change.path ["id"]);
+		}
 	}
 
-	void OnEntityRemove(object sender, KeyValueEventArgs<Entity, string> item)
+	void OnPlayerMove (DataChange change)
 	{
-		GameObject cube;
-		entities.TryGetValue(item.Value, out cube);
-		Destroy(cube);
+//		Debug.Log ("OnPlayerMove");
+//		Debug.Log ("playerId: " + change.path["id"] + ", Axis: " + change.path["axis"]);
+//		Debug.Log (change.value);
 
-		entities.Remove(item.Value);
+		GameObject cube;
+		players.TryGetValue (change.path ["id"], out cube);
+
+		cube.transform.Translate (new Vector3 (Convert.ToSingle(change.value), 0, 0));
 	}
 
-
-	void OnEntityMove (object sender, KeyValueEventArgs<Entity, string> item)
+	void OnPlayerRemoved (DataChange change)
 	{
-		GameObject cube;
-		entities.TryGetValue (item.Value, out cube);
+//		Debug.Log ("OnPlayerRemoved");
+//		Debug.Log (change.path);
+//		Debug.Log (change.value);
+	}
 
-		Debug.Log("Movement! x: " + item.Value.x + ", y: " + item.Value.y);
+	void OnMessageAdded (DataChange change)
+	{
+//		Debug.Log ("OnMessageAdded");
+//		Debug.Log (change.path["number"]);
+//		Debug.Log (change.value);
+	}
 
-		cube.transform.position = new Vector3(item.Value.x, item.Value.y, 0);
-		// cube.transform.Translate (new Vector3 (item.Value.x, item.Value.y, 0));
+	void OnChangeFallback (PatchObject change)
+	{
+//		Debug.Log ("OnChangeFallback");
+//		Debug.Log (change.operation);
+//		Debug.Log (change.path);
+//		Debug.Log (change.value);
 	}
 
 	void OnApplicationQuit()
